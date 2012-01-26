@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Application xmlns="*"
+    xmlns:mx="http://www.adobe.com/2006/mxml"
+    layout="vertical"
+    initialize="haveCamera = ( Camera.getCamera() != null )"
+    viewSourceURL="srcview/index.html"
+    creationComplete="onCreationComplete()">
+
+    <mx:Script>
+        <![CDATA[
+            import mx.collections.ArrayCollection;
+            import mx.controls.Alert;
+            import mx.events.FlexEvent;
+            import mx.utils.ObjectProxy;
+            import mx.utils.ObjectUtil;
+            import mx.utils.UIDUtil;
+
+            [Bindable]
+            private var haveCamera : Boolean;
+
+            [Bindable]
+            public var enableAEC : Boolean = true;
+
+            [Bindable]
+            public var netConnection : NetConnection;
+
+            public var users_so : SharedObject;
+            [Bindable]
+            public var dpUsers : ArrayCollection;
+
+            /**
+             *  This function creates the FMS connection and sets the Status event handler
+             */
+            public function createConnection() : void {
+                trace("MAIN:createConnection");
+                // Check the user name length
+                if (txtName.text.length > 0) {
+                    // Create Connection and setup Events
+                    netConnection = new NetConnection();
+                    netConnection.objectEncoding = ObjectEncoding.AMF0;
+                    netConnection.addEventListener(NetStatusEvent.NET_STATUS, netStatusHandler);
+                    // A simple Identifier for the asc side
+                    var identifier : String = txtName.text;
+                    while (identifier.search(" ") > 0)
+                        identifier = identifier.replace(" ", "_");
+                    //netConnection.connect( "rtmp://dev.trembit.com:1935/flex_videoconference/", txtName.text, identifier );
+                    netConnection.connect("rtmp://67.227.172.154:1935/iphone_videoconference/", txtName.text, identifier);
+                } else {
+                    Alert.show("Please provide a name for the video chat connection!");
+                }
+            }
+
+            /**
+             *	Waits for any status from the connection to FMS
+             */
+            public function netStatusHandler(event : NetStatusEvent) : void {
+                trace("MAIN:connectionSuccess:Success");
+                switch (event.info.code) {
+                    case "NetConnection.Connect.Success":
+                        // Connection succeeded now create components
+                        connectComponents();
+                        // Change to Video view
+                        vsMain.selectedChild = pnlVideo;
+                        break;
+                    case "NetConnection.Connect.Rejected":
+                        Alert.show("The number of users has been limited for this demo, please try again in a few minutes.",
+                            "Restricted Usage");
+                        break;
+                }
+
+            }
+
+            /**
+             *	Method called to create the components
+             */
+            public function connectComponents() : void {
+                trace("MAIN:connectComponents");
+                // Simple User shared object and event handling
+                SharedObject.defaultObjectEncoding = flash.net.ObjectEncoding.AMF0;
+                users_so = SharedObject.getRemote("users_so", netConnection.uri, false);
+                users_so.addEventListener(SyncEvent.SYNC, usersSyncHandler);
+                users_so.connect(netConnection);
+            }
+
+            /**
+             *	Listens for any change to the users shared object
+             */
+            public function usersSyncHandler(event : SyncEvent) : void {
+                trace("MAIN:usersSyncHandler" + ObjectUtil.toString(event.target.data));
+                var results : Object = event.target.data;
+                var usersArray : Array = new Array();
+                for (var a : String in results) {
+                    var obj : UserItemVO = new UserItemVO();
+                    obj.name = results[a];
+                    obj.identifier = a;
+                    usersArray.push(obj);
+                }
+                dpUsers = new ArrayCollection(usersArray);
+            }
+
+            /**
+             *	Closes connections and handles the logout
+             */
+            public function logout() : void {
+                trace("MAIN:connectComponents");
+                users_so.close();
+                netConnection.close();
+                dpUsers = null;
+                users_so = null;
+                netConnection = null;
+                vsMain.selectedChild = pnlLogin;
+            }
+
+            protected function onCreationComplete() : void {
+                if (haveCamera) {
+                    createConnection();
+                }
+            }
+        ]]>
+    </mx:Script>
+
+    <mx:ViewStack id="vsMain"
+        width="100%"
+        height="100%">
+        <!-- Login Panel -->
+        <mx:Panel id="pnlLogin"
+            title="Flex and FMS Video Conference Demo">
+            <mx:Form>
+                <mx:FormItem label="Name:">
+                    <mx:TextInput id="txtName"
+                        enabled="{ haveCamera }"
+                        text="{UIDUtil.createUID().substr(0, 8)}"/>
+                </mx:FormItem>
+                <mx:Button enabled="{ haveCamera }"
+                    label="Submit"
+                    click="createConnection()"/>
+                <mx:CheckBox id="enableAECBox"
+                    label="Enable AEC"
+                    selected="{enableAEC}"
+                    change="enableAEC = enableAECBox.selected"/>
+                <mx:Label text="{ ( haveCamera ) ? '':'Now camera is found!' }"/>
+            </mx:Form>
+        </mx:Panel>
+        <!-- Video Panel -->
+        <mx:Panel id="pnlVideo"
+            width="100%"
+            height="100%"
+            layout="vertical"
+            title="Welcome { txtName.text }!">
+
+            <mx:Tile width="100%"
+                height="100%">
+                <mx:Repeater id="rpUsers"
+                    dataProvider="{ dpUsers }">
+                    <VideoPod nc="{ netConnection }"
+                        isSender="{ rpUsers.currentItem.name == txtName.text }"
+                        userItem="{ rpUsers.currentItem }"/>
+                </mx:Repeater>
+            </mx:Tile>
+            <mx:ControlBar>
+                <mx:Button label="Logout"
+                    click="logout()"/>
+            </mx:ControlBar>
+        </mx:Panel>
+
+    </mx:ViewStack>
+
+</mx:Application>

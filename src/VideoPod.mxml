@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Panel xmlns="*"
+    xmlns:mx="http://www.adobe.com/2006/mxml"
+    width="180"
+    height="160"
+    layout="vertical"
+    title="{ userItem.name } Pod"
+    creationComplete="init()">
+    <mx:Script>
+        <![CDATA[
+            import flash.media.Video;
+
+            import mx.core.Application;
+
+            private var microphone : Microphone;
+            private var camera : Camera;
+            private var video : Video;
+
+            [Bindable]
+            public var userItem : UserItemVO;
+            public var nc : NetConnection;
+            private var ns : NetStream;
+
+            [Bindable]
+            public var isSender : Boolean;
+
+            private function init() : void {
+                ns = new NetStream(nc);
+                video = new Video(160, 120);
+
+                if (isSender) {
+                    camera = Camera.getCamera();
+                    // 2k bytes (or ~16kbps) of bandwidth
+                    if (camera) {
+                        camera.setQuality(0, 85);
+                        camera.setMode(160, 120, 15, false);
+                        // Set loopback as compressed
+                        camera.setLoopback(true);
+                        video.attachCamera(camera);
+                    } else {
+                        trace("No camera");
+                    }
+                    ns.attachCamera(camera);
+                    if (mainApp.enableAEC) {
+                        microphone = Microphone.getEnhancedMicrophone(-1);
+                    } else {
+                        microphone = Microphone.getMicrophone();
+                    }
+                    ns.attachAudio(microphone);
+                    ns.publish(userItem.identifier);
+                } else {
+                    video.attachNetStream(ns);
+                    trace("VIDEOCHATPOD: play(" + userItem.identifier + ")");
+                    ns.play(userItem.identifier);
+                }
+                videoDisplay.video = video;
+
+            }
+
+            private function get mainApp() : VideoTestFlex {
+                return VideoTestFlex(Application.application);
+            }
+        ]]>
+    </mx:Script>
+    <VideoContainer id="videoDisplay"
+        width="160"
+        height="120"/>
+</mx:Panel>
